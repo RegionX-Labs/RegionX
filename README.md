@@ -56,3 +56,28 @@ Instead of verifying this data from the contract code, we offload this process t
 ### 2.2 Coretime Marketplace
 
 ## 3. Develop
+
+
+## 3. Develop
+
+1. Make sure to have the latest [cargo contract](https://crates.io/crates/cargo-contract).
+2. Clone the GitHub repository: 
+```
+https://github.com/RegionX-Labs/RegionX.git
+```
+ 3. Compile and run unit tests
+```
+cd RegionX/
+cargo build
+cargo test
+```
+3. Build the contracts:
+```
+# To build the xc-regions contract:
+cd contracts/xc-regions/
+cargo contract build --release
+
+# To build the xc-regions contract:
+cd contracts/coretime-market/
+cargo contract build --release
+```
