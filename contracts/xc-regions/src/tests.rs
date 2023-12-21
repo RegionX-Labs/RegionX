@@ -35,22 +35,24 @@ use primitives::{
 type Event = <XcRegions as ::ink::reflect::ContractEventBase>::Type;
 
 #[ink::test]
-fn mock_environemnt_helper_functions_work() {
+fn mock_environment_helper_functions_work() {
 	let DefaultAccounts::<DefaultEnvironment> { alice, .. } = get_default_accounts();
 	let mut xc_regions = XcRegions::new();
 
+	let region_id_0 = region_id(0);
+
 	// State should be empty since we haven't yet minted any regions.
-	assert!(xc_regions.items.get(region_id(0)).is_none());
+	assert!(xc_regions.items.get(region_id_0).is_none());
 	assert!(xc_regions.account.get(alice).is_none());
 
 	// 1. Ensure mint works:
+	assert_ok!(xc_regions.mint(region_id_0, alice));
 
-	assert_ok!(xc_regions.mint(region_id(0), alice));
 	// Can't mint the same region twice:
-	assert!(xc_regions.mint(region_id(0), alice).is_err());
+	assert!(xc_regions.mint(region_id_0, alice).is_err());
 
 	assert_eq!(
-		xc_regions.items.get(region_id(0)),
+		xc_regions.items.get(region_id_0),
 		Some(ItemDetails {
 			owner: alice,
 			approved: None,
@@ -58,22 +60,23 @@ fn mock_environemnt_helper_functions_work() {
 			deposit: Default::default()
 		})
 	);
-	assert_eq!(xc_regions.account.get(alice), Some(vec![region_id(0)]));
+	assert_eq!(xc_regions.account.get(alice), Some(vec![region_id_0]));
 
 	// 2. Ensure burn works:
 
 	// Mint one more new region:
-	assert_ok!(xc_regions.mint(region_id(1), alice));
+	let region_id_1 = region_id(1);
+	assert_ok!(xc_regions.mint(region_id_1, alice));
 
-	assert_ok!(xc_regions.burn(region_id(0)));
-	assert!(xc_regions.items.get(region_id(0)).is_none());
-	assert_eq!(xc_regions.account.get(alice), Some(vec![region_id(1)]));
+	assert_ok!(xc_regions.burn(region_id_0));
+	assert!(xc_regions.items.get(region_id_0).is_none());
+	assert_eq!(xc_regions.account.get(alice), Some(vec![region_id_1]));
 
-	assert_ok!(xc_regions.burn(region_id(1)));
-	assert!(xc_regions.items.get(region_id(1)).is_none());
+	assert_ok!(xc_regions.burn(region_id_1));
+	assert!(xc_regions.items.get(region_id_1).is_none());
 	assert!(xc_regions.account.get(alice).is_none());
 
-	assert!(xc_regions.burn(region_id(1)).is_err());
+	assert!(xc_regions.burn(region_id_1).is_err());
 }
 
 #[ink::test]
@@ -109,6 +112,7 @@ fn init_works() {
 
 	// 2. Cannot initialize a region that is not owned by the caller
 	assert_ok!(xc_regions.mint(region_id(0), alice));
+	
 	set_caller::<DefaultEnvironment>(bob);
 	assert_eq!(xc_regions.init(0, Region::default()), Err(XcRegionsError::CannotInitialize));
 
@@ -177,7 +181,7 @@ fn metadata_version_gets_updated() {
 	let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
 	assert_init_event(&emitted_events.last().unwrap(), 0, Region::default(), 0);
 
-	// In reality the updating the metadata would require the asset to be destroyed, transferred
+	// In reality, updating metadata would require the asset to be destroyed, transferred
 	// back to the reserve chain via a cross-chain transfer, then sent back and re-initialized with
 	// the `init` call.
 
@@ -224,7 +228,7 @@ fn get_metadata_works() {
 	);
 }
 
-// TODO / Nice to have: can probably make this a macro for all events to avoid code duplication.
+// Helper functions for test
 fn assert_init_event(
 	event: &ink::env::test::EmittedEvent,
 	expected_region_id: RawRegionId,
