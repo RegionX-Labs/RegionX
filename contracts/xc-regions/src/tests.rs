@@ -112,7 +112,7 @@ fn init_works() {
 
 	// 2. Cannot initialize a region that is not owned by the caller
 	assert_ok!(xc_regions.mint(region_id(0), alice));
-	
+
 	set_caller::<DefaultEnvironment>(bob);
 	assert_eq!(xc_regions.init(0, Region::default()), Err(XcRegionsError::CannotInitialize));
 

@@ -188,8 +188,8 @@ pub mod xc_regions {
 		/// - `region` - The corresponding region metadata.
 		///
 		/// This function conducts a sanity check to verify that the metadata derived from the
-		/// `raw_region_id` aligns with the respective components of the metadata supplied through the
-		/// region argument.
+		/// `raw_region_id` aligns with the respective components of the metadata supplied through
+		/// the region argument.
 		///
 		/// If this is not the first time that this region is inititalized, the metadata version
 		/// will get incremented.
