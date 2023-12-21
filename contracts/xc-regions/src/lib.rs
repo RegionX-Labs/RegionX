@@ -188,7 +188,7 @@ pub mod xc_regions {
 		/// - `region` - The corresponding region metadata.
 		///
 		/// This function conducts a sanity check to verify that the metadata derived from the
-		/// raw_region_id aligns with the respective components of the metadata supplied through the
+		/// `raw_region_id` aligns with the respective components of the metadata supplied through the
 		/// region argument.
 		///
 		/// If this is not the first time that this region is inititalized, the metadata version
@@ -238,7 +238,7 @@ pub mod xc_regions {
 		/// A function to retrieve all metadata associated with a specific region. This function
 		/// verifies the region's existence on this chain prior to fetching its metadata.
 		///
-		/// The function returns a VersionedRegion, encompassing the version of the retrieved
+		/// The function returns a `VersionedRegion`, encompassing the version of the retrieved
 		/// metadata that is intended for client-side verification.
 		///
 		/// ## Arguments:
