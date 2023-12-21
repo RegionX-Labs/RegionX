@@ -23,6 +23,7 @@ pub mod coretime_market {
 	#[ink(storage)]
 	#[derive(Default, Storage)]
 	pub struct CoretimeMarket {
+		// FIXME: ink! smart contract boilerplate
 		foo: u8,
 	}
 
@@ -32,6 +33,7 @@ pub mod coretime_market {
 			Default::default()
 		}
 
+		// FIXME: ink! smart contract boilerplate
 		#[ink(message)]
 		pub fn foo(&self) {}
 	}
