@@ -36,7 +36,7 @@ pub mod xc_regions {
 	};
 	use ink::{
 		codegen::{EmitEvent, Env},
-		prelude::{string::ToString, vec::Vec},
+		prelude::{format, string::ToString, vec::Vec},
 		storage::Mapping,
 	};
 	use openbrush::{contracts::psp34::extensions::metadata::*, traits::Storage};
@@ -44,7 +44,7 @@ pub mod xc_regions {
 		coretime::{RawRegionId, Region, RegionId},
 		ensure,
 		uniques::{CollectionId, ItemDetails, UniquesCall},
-		RuntimeCall, Version,
+		MultiAddress, RuntimeCall, Version,
 	};
 	use uniques_extension::UniquesExtension;
 
@@ -139,7 +139,7 @@ pub mod xc_regions {
 					.call_runtime(&RuntimeCall::Uniques(UniquesCall::ApproveTransfer {
 						collection: REGIONS_COLLECTION_ID,
 						item: region_id,
-						delegate: operator,
+						delegate: MultiAddress::Id(operator),
 					}))
 					.map_err(|_| PSP34Error::Custom(XcRegionsError::RuntimeError.to_string()))
 			} else {
@@ -148,7 +148,7 @@ pub mod xc_regions {
 					.call_runtime(&RuntimeCall::Uniques(UniquesCall::CancelApproval {
 						collection: REGIONS_COLLECTION_ID,
 						item: region_id,
-						maybe_check_delegate: Some(operator),
+						maybe_check_delegate: Some(MultiAddress::Id(operator)),
 					}))
 					.map_err(|_| PSP34Error::Custom(XcRegionsError::RuntimeError.to_string()))
 			}
@@ -164,7 +164,7 @@ pub mod xc_regions {
 				.call_runtime(&RuntimeCall::Uniques(UniquesCall::Transfer {
 					collection: REGIONS_COLLECTION_ID,
 					item: id,
-					dest: to,
+					dest: MultiAddress::Id(to),
 				}))
 				.map_err(|_| PSP34Error::Custom(XcRegionsError::RuntimeError.to_string()))
 		}

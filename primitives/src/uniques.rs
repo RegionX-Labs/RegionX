@@ -13,24 +13,27 @@
 // You should have received a copy of the GNU General Public License
 // along with RegionX.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{coretime::RawRegionId, Balance};
+use crate::{coretime::RawRegionId, Balance, MultiAddress};
 use openbrush::traits::AccountId;
 
 // The type used to identify collections in the underlying uniques pallet.
 pub type CollectionId = u32;
 
-#[derive(scale::Encode)]
+#[derive(scale::Encode, scale::Decode)]
 pub enum UniquesCall {
-	// TODO: use proper index based on the underlying runtime.
-	#[codec(index = 8)]
-	Transfer { collection: CollectionId, item: RawRegionId, dest: AccountId },
-	#[codec(index = 25)]
-	ApproveTransfer { collection: CollectionId, item: RawRegionId, delegate: AccountId },
-	#[codec(index = 26)]
+	#[codec(index = 5)]
+	Transfer { collection: CollectionId, item: RawRegionId, dest: MultiAddress<AccountId, ()> },
+	#[codec(index = 13)]
+	ApproveTransfer {
+		collection: CollectionId,
+		item: RawRegionId,
+		delegate: MultiAddress<AccountId, ()>,
+	},
+	#[codec(index = 14)]
 	CancelApproval {
 		collection: CollectionId,
 		item: RawRegionId,
-		maybe_check_delegate: Option<AccountId>,
+		maybe_check_delegate: Option<MultiAddress<AccountId, ()>>,
 	},
 }
 
