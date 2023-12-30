@@ -15,8 +15,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use ink::prelude::vec::Vec;
-
 pub mod coretime;
 pub mod macros;
 pub mod uniques;
@@ -31,20 +29,4 @@ pub type Version = u32;
 pub enum RuntimeCall {
 	#[codec(index = 37)]
 	Uniques(uniques::UniquesCall),
-}
-
-/// A multi-format address wrapper for on-chain accounts.
-#[derive(scale::Encode, scale::Decode, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "std", derive(Hash))]
-pub enum MultiAddress<AccountId, AccountIndex> {
-	/// It's an account ID (pubkey).
-	Id(AccountId),
-	/// It's an account index.
-	Index(#[codec(compact)] AccountIndex),
-	/// It's some arbitrary raw bytes.
-	Raw(Vec<u8>),
-	/// It's a 32 byte representation.
-	Address32([u8; 32]),
-	/// Its a 20 byte representation.
-	Address20([u8; 20]),
 }

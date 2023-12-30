@@ -13,8 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with RegionX.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{coretime::RawRegionId, Balance, MultiAddress};
+use crate::{coretime::RawRegionId, Balance};
 use openbrush::traits::AccountId;
+use sp_runtime::MultiAddress;
 
 // The type used to identify collections in the underlying uniques pallet.
 pub type CollectionId = u32;
