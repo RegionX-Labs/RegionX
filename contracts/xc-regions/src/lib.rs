@@ -261,19 +261,6 @@ pub mod xc_regions {
 				self.items.get((REGIONS_COLLECTION_ID, region_id)).map(|a| a.owner)
 			}
 		}
-
-		/// All items owned by `who`.
-		fn _uniques_owned(&self, who: AccountId) -> Vec<(CollectionId, RawRegionId)> {
-			#[cfg(not(test))]
-			{
-				self.env().extension().owned(who).unwrap_or_default()
-			}
-			// When testing we use mock state.
-			#[cfg(test)]
-			{
-				self.account.get(who).map(|a| a).unwrap_or_default()
-			}
-		}
 	}
 
 	// Helper functions for modifying the mock state.

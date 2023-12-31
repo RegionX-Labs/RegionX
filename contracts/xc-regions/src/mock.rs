@@ -38,11 +38,6 @@ impl UniquesExtension for MockExtension {
 		todo!()
 	}
 
-	/// All items owned by `who`.
-	fn owned(&self, _who: AccountId) -> Result<Vec<(CollectionId, RawRegionId)>, UniquesError> {
-		todo!()
-	}
-
 	/// Returns the details of a collection.
 	fn collection(
 		&self,
