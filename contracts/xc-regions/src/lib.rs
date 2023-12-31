@@ -19,11 +19,6 @@
 mod traits;
 mod types;
 
-#[cfg(test)]
-mod mock;
-//#[cfg(test)]
-//mod tests;
-
 // NOTE: This should be the collection ID of the underlying region collection.
 const REGIONS_COLLECTION_ID: u32 = 42;
 
@@ -128,13 +123,7 @@ pub mod xc_regions {
 			// After passing all checks we will transfer the region to the contract and mint a
 			// wrapped xcRegion token.
 			let contract = self.env().account_id();
-			self.env()
-				.call_runtime(&RuntimeCall::Uniques(UniquesCall::Transfer {
-					collection: REGIONS_COLLECTION_ID,
-					item: raw_region_id,
-					dest: contract.into(),
-				}))
-				.map_err(|_| XcRegionsError::RuntimeError)?;
+			self._transfer_approved(raw_region_id, contract);
 
 			let new_version = if let Some(version) = self.metadata_versions.get(raw_region_id) {
 				version.saturating_add(1)
@@ -217,6 +206,22 @@ pub mod xc_regions {
 
 	// Internal functions:
 	impl XcRegions {
+		fn _transfer_approved(
+			&self,
+			region_id: RawRegionId,
+			dest: AccountId,
+		) -> Result<(), XcRegionsError> {
+			self.env()
+				.call_runtime(&RuntimeCall::Uniques(UniquesCall::Transfer {
+					collection: REGIONS_COLLECTION_ID,
+					item: region_id,
+					dest: dest.into(),
+				}))
+				.map_err(|_| XcRegionsError::RuntimeError)?;
+
+			Ok(())
+		}
+
 		/// Returns whether the region exists on this chain or not.
 		fn _uniques_exists(&self, region_id: RawRegionId) -> bool {
 			self._uniques_item(region_id).is_some()
@@ -249,13 +254,11 @@ pub mod xc_regions {
 		use ink_e2e::{subxt::dynamic::Value, AccountKeyring::Alice, MessageBuilder};
 		use openbrush::contracts::psp34::psp34_external::PSP34;
 		use primitives::{address_of, assert_ok};
-		use scale::Encode;
-		use sp_runtime::MultiAddress;
 
 		type E2EResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 		#[ink_e2e::test(environment = ExtendedEnvironment)]
-		async fn init_non_existant_region_fails(
+		async fn init_non_existing_region_fails(
 			mut client: ink_e2e::Client<C, E>,
 		) -> E2EResult<()> {
 			let constructor = XcRegionsRef::new();
@@ -268,7 +271,6 @@ pub mod xc_regions {
 			let raw_region_id = 0u128;
 			let region = Region::default();
 
-			// TEST CASE 1: Cannot initialize a region that doesn't exist:
 			let init = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
 				contract_acc_id.clone(),
 			)
@@ -280,8 +282,15 @@ pub mod xc_regions {
 			Ok(())
 		}
 
-		#[ink_e2e::test]
-		async fn init_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+		#[ink_e2e::test(environment = ExtendedEnvironment)]
+		async fn init_works(mut client: E2EBackend) -> E2EResult<()> {
+			let constructor = XcRegionsRef::new();
+			let contract_acc_id = client
+				.instantiate("xc-regions", &ink_e2e::alice(), constructor, 0, None)
+				.await
+				.expect("instantiate failed")
+				.account_id;
+
 			let raw_region_id = 0u128;
 			let region = Region::default();
 
@@ -305,6 +314,24 @@ pub mod xc_regions {
 				.runtime_call(&ink_e2e::alice(), "Uniques", "mint", call_data)
 				.await
 				.expect("minting a region failed");
+
+			// Approve transfer region:
+			let call_data = vec![
+				Value::u128(REGIONS_COLLECTION_ID.into()),
+				Value::u128(raw_region_id.into()),
+				Value::unnamed_variant("Id", [Value::from_bytes(contract_acc_id)]),
+			];
+			client
+				.runtime_call(&ink_e2e::alice(), "Uniques", "approve_transfer", call_data)
+				.await
+				.expect("approving transfer failed");
+
+			let init = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
+			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
+			assert!(init_result.is_ok());
 
 			Ok(())
 		}
