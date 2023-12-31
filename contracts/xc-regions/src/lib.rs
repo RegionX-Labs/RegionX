@@ -123,7 +123,7 @@ pub mod xc_regions {
 			// After passing all checks we will transfer the region to the contract and mint a
 			// wrapped xcRegion token.
 			let contract = self.env().account_id();
-			self._transfer_approved(raw_region_id, contract);
+			self._transfer_approved(raw_region_id, contract)?;
 
 			let new_version = if let Some(version) = self.metadata_versions.get(raw_region_id) {
 				version.saturating_add(1)
