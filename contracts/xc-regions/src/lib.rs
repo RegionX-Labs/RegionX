@@ -209,16 +209,12 @@ pub mod xc_regions {
 		/// On success this ink message emits the `RegionRemoved` event.
 		#[ink(message)]
 		fn remove(&mut self, region_id: RawRegionId) -> Result<(), XcRegionsError> {
-			// We only allow the removal of regions that no longer exist in the underlying nft
-			// pallet.
-			ensure!(!self._uniques_exists(region_id), XcRegionsError::CannotRemove);
-			self.regions.remove(region_id);
-
 			let id = Id::U128(region_id);
 			let owner = psp34::PSP34Impl::owner_of(self, id.clone())
 				.ok_or(XcRegionsError::RegionNotFound)?;
 
-			psp34::InternalImpl::_burn_from(self, owner, id)
+			self.regions.remove(region_id);
+			psp34::InternalImpl::_transfer_token(self, owner, id, Default::default())
 				.map_err(|err| XcRegionsError::Psp34(err))?;
 
 			self.env().emit_event(RegionRemoved { region_id });
