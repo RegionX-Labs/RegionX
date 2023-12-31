@@ -27,6 +27,7 @@ mod tests;
 // NOTE: This should be the collection ID of the underlying region collection.
 const REGIONS_COLLECTION_ID: u32 = 42;
 
+#[openbrush::implementation(PSP34)]
 #[openbrush::contract(env = environment::ExtendedEnvironment)]
 pub mod xc_regions {
 	use crate::{
@@ -39,10 +40,7 @@ pub mod xc_regions {
 		prelude::string::ToString,
 		storage::Mapping,
 	};
-	use openbrush::{
-		contracts::psp34::*,
-		traits::{Storage, StorageAsMut},
-	};
+	use openbrush::traits::{Storage, StorageAsMut};
 	use primitives::{
 		coretime::{RawRegionId, Region, RegionId},
 		ensure,
@@ -97,95 +95,9 @@ pub mod xc_regions {
 		pub(crate) region_id: RawRegionId,
 	}
 
-	impl PSP34 for XcRegions {
-		#[ink(message)]
-		fn collection_id(&self) -> Id {
-			Id::U32(REGIONS_COLLECTION_ID)
-		}
-
-		#[ink(message)]
-		fn balance_of(&self, who: AccountId) -> u32 {
-			self.owned(who).len() as u32
-		}
-
-		#[ink(message)]
-		fn owner_of(&self, id: Id) -> Option<AccountId> {
-			// We expect the region id to be a `u128`.
-			if let Id::U128(region_id) = id {
-				self.owner(region_id)
-			} else {
-				None
-			}
-		}
-
-		#[ink(message)]
-		fn allowance(&self, owner: AccountId, operator: AccountId, id: Option<Id>) -> bool {
-			// We expect the region id to be a `u128`.
-			let Some(Id::U128(region_id)) = id else { return false };
-
-			if let Some(item_details) = self.item(region_id) {
-				item_details.owner == owner && item_details.approved == Some(operator)
-			} else {
-				false
-			}
-		}
-
-		#[ink(message)]
-		fn approve(
-			&mut self,
-			operator: AccountId,
-			id: Option<Id>,
-			approved: bool,
-		) -> Result<(), PSP34Error> {
-			// We expect the region id to be a `u128`.
-			let Some(Id::U128(region_id)) = id else {
-				return Err(PSP34Error::Custom(XcRegionsError::InvalidRegionId.to_string()))
-			};
-
-			if approved {
-				// Approve:
-				self.env()
-					.call_runtime(&RuntimeCall::Uniques(UniquesCall::ApproveTransfer {
-						collection: REGIONS_COLLECTION_ID,
-						item: region_id,
-						delegate: operator.into(),
-					}))
-					.map_err(|_| PSP34Error::Custom(XcRegionsError::RuntimeError.to_string()))
-			} else {
-				// Cancel approval:
-				self.env()
-					.call_runtime(&RuntimeCall::Uniques(UniquesCall::CancelApproval {
-						collection: REGIONS_COLLECTION_ID,
-						item: region_id,
-						maybe_check_delegate: Some(operator.into()),
-					}))
-					.map_err(|_| PSP34Error::Custom(XcRegionsError::RuntimeError.to_string()))
-			}
-		}
-
-		#[ink(message)]
-		fn transfer(&mut self, to: AccountId, id: Id, _data: Vec<u8>) -> Result<(), PSP34Error> {
-			let Id::U128(id) = id else {
-				return Err(PSP34Error::Custom(XcRegionsError::InvalidRegionId.to_string()))
-			};
-
-			self.env()
-				.call_runtime(&RuntimeCall::Uniques(UniquesCall::Transfer {
-					collection: REGIONS_COLLECTION_ID,
-					item: id,
-					dest: to.into(),
-				}))
-				.map_err(|_| PSP34Error::Custom(XcRegionsError::RuntimeError.to_string()))
-		}
-
-		#[ink(message)]
-		fn total_supply(&self) -> Balance {
-			if let Ok(Some(collection)) = self.env().extension().collection(REGIONS_COLLECTION_ID) {
-				collection.items.into()
-			} else {
-				Default::default()
-			}
-		}
+	#[overrider(PSP34)]
+	fn collection_id(&self) -> Id {
+		Id::U32(REGIONS_COLLECTION_ID)
 	}
 
 	impl RegionMetadata for XcRegions {
@@ -214,7 +126,7 @@ pub mod xc_regions {
 		) -> Result<(), XcRegionsError> {
 			let caller = self.env().caller();
 			ensure!(
-				Some(caller) == self.owner_of(Id::U128(raw_region_id)),
+				Some(caller) == self._uniques_owner(raw_region_id),
 				XcRegionsError::CannotInitialize
 			);
 
@@ -236,7 +148,7 @@ pub mod xc_regions {
 
 			self.metadata_versions.insert(raw_region_id, &new_version);
 			self.regions.insert(raw_region_id, &region);
-			self._insert_token_owner(&Id::U128(raw_region_id), &caller);
+			psp34::BalancesManager::_insert_token_owner(self, &Id::U128(raw_region_id), &caller);
 
 			self.env().emit_event(RegionInitialized {
 				region_id: raw_region_id,
@@ -259,7 +171,7 @@ pub mod xc_regions {
 		fn get_metadata(&self, region_id: RawRegionId) -> Result<VersionedRegion, XcRegionsError> {
 			// We must first ensure that the region is still present on this chain before retrieving
 			// the metadata.
-			ensure!(self.exists(region_id), XcRegionsError::RegionNotFound);
+			ensure!(self._uniques_exists(region_id), XcRegionsError::RegionNotFound);
 
 			let Some(region) = self.regions.get(region_id) else {
 				return Err(XcRegionsError::MetadataNotFound)
@@ -287,9 +199,9 @@ pub mod xc_regions {
 		fn remove(&mut self, region_id: RawRegionId) -> Result<(), XcRegionsError> {
 			// We only allow the removal of regions that no longer exist in the underlying nft
 			// pallet.
-			ensure!(!self.exists(region_id), XcRegionsError::CannotRemove);
+			ensure!(!self._uniques_exists(region_id), XcRegionsError::CannotRemove);
 			self.regions.remove(region_id);
-			self._remove_token_owner(&Id::U128(region_id));
+			psp34::BalancesManager::_remove_token_owner(self, &Id::U128(region_id));
 
 			self.env().emit_event(RegionRemoved { region_id });
 			Ok(())
@@ -306,12 +218,12 @@ pub mod xc_regions {
 	// Internal functions:
 	impl XcRegions {
 		/// Returns whether the region exists on this chain or not.
-		fn exists(&self, region_id: RawRegionId) -> bool {
-			self.item(region_id).is_some()
+		fn _uniques_exists(&self, region_id: RawRegionId) -> bool {
+			self._uniques_item(region_id).is_some()
 		}
 
 		/// Returns the details of an item within a collection.
-		fn item(&self, item_id: RawRegionId) -> Option<ItemDetails> {
+		fn _uniques_item(&self, item_id: RawRegionId) -> Option<ItemDetails> {
 			#[cfg(not(test))]
 			{
 				self.env().extension().item(REGIONS_COLLECTION_ID, item_id).ok()?
@@ -324,7 +236,7 @@ pub mod xc_regions {
 		}
 
 		/// The owner of the specific item.
-		fn owner(&self, region_id: RawRegionId) -> Option<AccountId> {
+		fn _uniques_owner(&self, region_id: RawRegionId) -> Option<AccountId> {
 			#[cfg(not(test))]
 			{
 				self.env().extension().owner(REGIONS_COLLECTION_ID, region_id).ok()?
@@ -337,7 +249,7 @@ pub mod xc_regions {
 		}
 
 		/// All items owned by `who`.
-		fn owned(&self, who: AccountId) -> Vec<(CollectionId, RawRegionId)> {
+		fn _uniques_owned(&self, who: AccountId) -> Vec<(CollectionId, RawRegionId)> {
 			#[cfg(not(test))]
 			{
 				self.env().extension().owned(who).unwrap_or_default()
@@ -347,14 +259,6 @@ pub mod xc_regions {
 			{
 				self.account.get(who).map(|a| a).unwrap_or_default()
 			}
-		}
-
-		fn _insert_token_owner(&mut self, id: &Id, to: &AccountId) {
-			self.data().token_owner.insert(id, to);
-		}
-
-		fn _remove_token_owner(&mut self, id: &Id) {
-			self.data().token_owner.remove(id);
 		}
 	}
 
