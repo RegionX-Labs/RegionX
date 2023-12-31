@@ -37,10 +37,9 @@ pub mod xc_regions {
 	};
 	use ink::{
 		codegen::{EmitEvent, Env},
-		prelude::string::ToString,
 		storage::Mapping,
 	};
-	use openbrush::traits::{Storage, StorageAsMut};
+	use openbrush::traits::Storage;
 	use primitives::{
 		coretime::{RawRegionId, Region, RegionId},
 		ensure,
@@ -140,6 +139,17 @@ pub mod xc_regions {
 			ensure!(region_id.core == region.core, XcRegionsError::InvalidMetadata);
 			ensure!(region_id.mask == region.mask, XcRegionsError::InvalidMetadata);
 
+			// After passing all checks we will transfer the region to the contract and mint a
+			// wrapped xcRegion token.
+			let contract = self.env().account_id();
+			self.env()
+				.call_runtime(&RuntimeCall::Uniques(UniquesCall::Transfer {
+					collection: REGIONS_COLLECTION_ID,
+					item: raw_region_id,
+					dest: contract.into(),
+				}))
+				.map_err(|_| XcRegionsError::RuntimeError)?;
+
 			let new_version = if let Some(version) = self.metadata_versions.get(raw_region_id) {
 				version.saturating_add(1)
 			} else {
@@ -148,7 +158,9 @@ pub mod xc_regions {
 
 			self.metadata_versions.insert(raw_region_id, &new_version);
 			self.regions.insert(raw_region_id, &region);
-			psp34::BalancesManager::_insert_token_owner(self, &Id::U128(raw_region_id), &caller);
+
+			psp34::InternalImpl::_mint_to(self, caller, Id::U128(raw_region_id))
+				.map_err(|err| XcRegionsError::Psp34(err))?;
 
 			self.env().emit_event(RegionInitialized {
 				region_id: raw_region_id,
@@ -201,7 +213,13 @@ pub mod xc_regions {
 			// pallet.
 			ensure!(!self._uniques_exists(region_id), XcRegionsError::CannotRemove);
 			self.regions.remove(region_id);
-			psp34::BalancesManager::_remove_token_owner(self, &Id::U128(region_id));
+
+			let id = Id::U128(region_id);
+			let owner = psp34::PSP34Impl::owner_of(self, id.clone())
+				.ok_or(XcRegionsError::RegionNotFound)?;
+
+			psp34::InternalImpl::_burn_from(self, owner, id)
+				.map_err(|err| XcRegionsError::Psp34(err))?;
 
 			self.env().emit_event(RegionRemoved { region_id });
 			Ok(())
