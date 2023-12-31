@@ -276,8 +276,7 @@ pub mod xc_regions {
 			)
 			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
 			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
-			//assert_eq!(init_result, Err(XcRegionsError::CannotInitialize));
-			assert!(init_result.is_err());
+			assert!(init_result.is_err(), "Init for non existing region should fail");
 
 			Ok(())
 		}
@@ -331,7 +330,90 @@ pub mod xc_regions {
 			)
 			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
 			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
-			assert!(init_result.is_ok());
+			assert!(init_result.is_ok(), "Init should work");
+
+			let balance_of = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.balance_of(address_of!(Alice)));
+			let balance_of_res = client.call_dry_run(&ink_e2e::alice(), &balance_of, 0, None).await;
+
+			assert_eq!(balance_of_res.return_value(), 1);
+
+			let get_metadata =
+				MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+					contract_acc_id.clone(),
+				)
+				.call(|xc_regions| xc_regions.get_metadata(raw_region_id));
+			let get_metadata_res =
+				client.call_dry_run(&ink_e2e::alice(), &get_metadata, 0, None).await;
+
+			assert_eq!(get_metadata_res.return_value(), Ok(VersionedRegion { version: 0, region }));
+
+			Ok(())
+		}
+
+		#[ink_e2e::test(environment = ExtendedEnvironment)]
+		async fn init_fails_with_incorrect_region_id(mut client: E2EBackend) -> E2EResult<()> {
+			let constructor = XcRegionsRef::new();
+			let contract_acc_id = client
+				.instantiate("xc-regions", &ink_e2e::alice(), constructor, 0, None)
+				.await
+				.expect("instantiate failed")
+				.account_id;
+
+			let raw_region_id = 0u128;
+			let mut region = Region::default();
+
+			// Create region: collection
+			let call_data = vec![
+				Value::u128(REGIONS_COLLECTION_ID.into()),
+				Value::unnamed_variant("Id", [Value::from_bytes(&address_of!(Alice))]),
+			];
+			client
+				.runtime_call(&ink_e2e::alice(), "Uniques", "create", call_data)
+				.await
+				.expect("creating a collection failed");
+
+			// Mint region:
+			let call_data = vec![
+				Value::u128(REGIONS_COLLECTION_ID.into()),
+				Value::u128(raw_region_id.into()),
+				Value::unnamed_variant("Id", [Value::from_bytes(&address_of!(Alice))]),
+			];
+			client
+				.runtime_call(&ink_e2e::alice(), "Uniques", "mint", call_data)
+				.await
+				.expect("minting a region failed");
+
+			// Approve transfer region:
+			let call_data = vec![
+				Value::u128(REGIONS_COLLECTION_ID.into()),
+				Value::u128(raw_region_id.into()),
+				Value::unnamed_variant("Id", [Value::from_bytes(contract_acc_id)]),
+			];
+			client
+				.runtime_call(&ink_e2e::alice(), "Uniques", "approve_transfer", call_data)
+				.await
+				.expect("approving transfer failed");
+
+			// Corrupt the metadata. The contract will notice since begin is part of the `RegionId`.
+			region.begin = 42;
+			let init = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
+			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
+			assert!(init_result.is_err(), "Init with incorrect region.begin should fail");
+
+			// Works after resetting the default:
+			region.begin = Default::default();
+			let init = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
+			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
+			assert!(init_result.is_ok(), "Init with correct region.begin should succeed");
 
 			Ok(())
 		}
