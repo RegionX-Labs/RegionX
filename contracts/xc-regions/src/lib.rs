@@ -236,30 +236,75 @@ pub mod xc_regions {
 	#[cfg(all(test, feature = "e2e-tests"))]
 	pub mod tests {
 		use super::*;
+		use crate::{
+			traits::regionmetadata_external::RegionMetadata,
+			types::{VersionedRegion, XcRegionsError},
+			REGIONS_COLLECTION_ID,
+		};
+		use environment::ExtendedEnvironment;
 		use ink::{
 			env::{test::DefaultAccounts, DefaultEnvironment},
 			primitives::AccountId,
 		};
-		use ink_e2e::{build_message, subxt::dynamic::Value, AccountKeyring::Alice};
+		use ink_e2e::{subxt::dynamic::Value, AccountKeyring::Alice, MessageBuilder};
 		use openbrush::contracts::psp34::psp34_external::PSP34;
 		use primitives::{address_of, assert_ok};
-		use sp_runtime::MultiAddress;
 		use scale::Encode;
+		use sp_runtime::MultiAddress;
 
 		type E2EResult<T> = Result<T, Box<dyn std::error::Error>>;
 
+		#[ink_e2e::test(environment = ExtendedEnvironment)]
+		async fn init_non_existant_region_fails(
+			mut client: ink_e2e::Client<C, E>,
+		) -> E2EResult<()> {
+			let constructor = XcRegionsRef::new();
+			let contract_acc_id = client
+				.instantiate("xc-regions", &ink_e2e::alice(), constructor, 0, None)
+				.await
+				.expect("instantiate failed")
+				.account_id;
+
+			let raw_region_id = 0u128;
+			let region = Region::default();
+
+			// TEST CASE 1: Cannot initialize a region that doesn't exist:
+			let init = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
+			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
+			//assert_eq!(init_result, Err(XcRegionsError::CannotInitialize));
+			assert!(init_result.is_err());
+
+			Ok(())
+		}
+
 		#[ink_e2e::test]
 		async fn init_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-			let alice_account = ink_e2e::account_id(Alice);
+			let raw_region_id = 0u128;
+			let region = Region::default();
 
+			// Create region: collection
 			let call_data = vec![
 				Value::u128(REGIONS_COLLECTION_ID.into()),
-				Value::unnamed_variant("Id", [Value::from_bytes(&alice_account)]),
+				Value::unnamed_variant("Id", [Value::from_bytes(&address_of!(Alice))]),
 			];
 			client
 				.runtime_call(&ink_e2e::alice(), "Uniques", "create", call_data)
 				.await
 				.expect("creating a collection failed");
+
+			// Mint region:
+			let call_data = vec![
+				Value::u128(REGIONS_COLLECTION_ID.into()),
+				Value::u128(raw_region_id.into()),
+				Value::unnamed_variant("Id", [Value::from_bytes(&address_of!(Alice))]),
+			];
+			client
+				.runtime_call(&ink_e2e::alice(), "Uniques", "mint", call_data)
+				.await
+				.expect("minting a region failed");
 
 			Ok(())
 		}
