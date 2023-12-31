@@ -22,6 +22,15 @@ primitives = { path = "../../primitives", default-features = false  }
 ink_e2e = "4.2.1"
 obce = { git = "https://github.com/727-Ventures/obce", default-features = false, features = ["ink-std"] }
 
+# Substrate
+#
+# We need to explicitly turn off some of the `sp-io` features, to avoid conflicts
+# (especially for global allocator).
+#
+# See also: https://substrate.stackexchange.com/questions/4733/error-when-compiling-a-contract-using-the-xcm-chain-extension.
+sp-io = { version = "23.0.0", default-features = false, features = ["disable_panic_handler", "disable_oom", "disable_allocator"] }
+sp-runtime = { version = "24.0.0", default-features = false }
+
 [lib]
 path = "src/lib.rs"
 

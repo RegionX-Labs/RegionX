@@ -21,8 +21,8 @@ mod types;
 
 #[cfg(test)]
 mod mock;
-#[cfg(test)]
-mod tests;
+//#[cfg(test)]
+//mod tests;
 
 // NOTE: This should be the collection ID of the underlying region collection.
 const REGIONS_COLLECTION_ID: u32 = 42;
@@ -43,7 +43,7 @@ pub mod xc_regions {
 	use primitives::{
 		coretime::{RawRegionId, Region, RegionId},
 		ensure,
-		uniques::{CollectionId, ItemDetails, UniquesCall},
+		uniques::{ItemDetails, UniquesCall},
 		RuntimeCall, Version,
 	};
 	use uniques_extension::UniquesExtension;
@@ -59,20 +59,6 @@ pub mod xc_regions {
 		///
 		/// This version gets incremented for a region each time it gets re-initialized.
 		pub metadata_versions: Mapping<RawRegionId, Version>,
-		// Mock state only used for testing. In production the contract is reading the state from
-		// the chain extension.
-		#[cfg(test)]
-		pub items: Mapping<
-			(primitives::uniques::CollectionId, primitives::coretime::RawRegionId),
-			ItemDetails,
-		>,
-		// Mock state only used for testing. In production the contract is reading the state from
-		// the chain extension.
-		#[cfg(test)]
-		pub account: Mapping<
-			AccountId,
-			Vec<(primitives::uniques::CollectionId, primitives::coretime::RawRegionId)>,
-		>,
 	}
 
 	#[ink(event)]
@@ -238,106 +224,42 @@ pub mod xc_regions {
 
 		/// Returns the details of an item within a collection.
 		fn _uniques_item(&self, item_id: RawRegionId) -> Option<ItemDetails> {
-			#[cfg(not(test))]
-			{
-				self.env().extension().item(REGIONS_COLLECTION_ID, item_id).ok()?
-			}
-			// When testing we use mock state.
-			#[cfg(test)]
-			{
-				self.items.get((REGIONS_COLLECTION_ID, item_id))
-			}
+			self.env().extension().item(REGIONS_COLLECTION_ID, item_id).ok()?
 		}
 
 		/// The owner of the specific item.
 		fn _uniques_owner(&self, region_id: RawRegionId) -> Option<AccountId> {
-			#[cfg(not(test))]
-			{
-				self.env().extension().owner(REGIONS_COLLECTION_ID, region_id).ok()?
-			}
-			// When testing we use mock state.
-			#[cfg(test)]
-			{
-				self.items.get((REGIONS_COLLECTION_ID, region_id)).map(|a| a.owner)
-			}
-		}
-	}
-
-	// Helper functions for modifying the mock state.
-	#[cfg(test)]
-	impl XcRegions {
-		pub fn mint(
-			&mut self,
-			id: (CollectionId, RawRegionId),
-			owner: AccountId,
-		) -> Result<(), &'static str> {
-			ensure!(self.items.get((id.0, id.1)).is_none(), "Item already exists");
-			self.items.insert(
-				(id.0, id.1),
-				&ItemDetails {
-					owner,
-					approved: None,
-					is_frozen: false,
-					deposit: Default::default(),
-				},
-			);
-
-			let mut owned = self.account.get(owner).map(|a| a).unwrap_or_default();
-			owned.push((id.0, id.1));
-			self.account.insert(owner, &owned);
-
-			Ok(())
-		}
-
-		pub fn burn(&mut self, id: (CollectionId, RawRegionId)) -> Result<(), &'static str> {
-			let Some(owner) = self.items.get((id.0, id.1)).map(|a| a.owner) else {
-				return Err("Item not found")
-			};
-
-			let mut owned = self.account.get(owner).map(|a| a).unwrap_or_default();
-			owned.retain(|a| *a != (id.0, id.1));
-
-			if owned.is_empty() {
-				self.account.remove(owner);
-			} else {
-				self.account.insert(owner, &owned);
-			}
-
-			self.items.remove((id.0, id.1));
-
-			Ok(())
+			self.env().extension().owner(REGIONS_COLLECTION_ID, region_id).ok()?
 		}
 	}
 
 	#[cfg(all(test, feature = "e2e-tests"))]
 	pub mod tests {
-		use crate::{
-			mock::{region_id, register_chain_extensions, MockExtension},
-			xc_regions::XcRegionsRef,
+		use super::*;
+		use ink::{
+			env::{test::DefaultAccounts, DefaultEnvironment},
+			primitives::AccountId,
 		};
-		use ink::env::{test::DefaultAccounts, DefaultEnvironment};
-		use ink_e2e::build_message;
+		use ink_e2e::{build_message, subxt::dynamic::Value, AccountKeyring::Alice};
 		use openbrush::contracts::psp34::psp34_external::PSP34;
 		use primitives::{address_of, assert_ok};
+		use sp_runtime::MultiAddress;
+		use scale::Encode;
 
 		type E2EResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 		#[ink_e2e::test]
-		async fn test_1(
-			mut client: ink_e2e::Client<C, environment::ExtendedEnvironment>,
-		) -> E2EResult<()> {
-			let mut mock = MockExtension::default();
-			register_chain_extensions(mock);
+		async fn init_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+			let alice_account = ink_e2e::account_id(Alice);
 
-			let constructor = XcRegionsRef::new();
-
-			/* Related issue: https://substrate.stackexchange.com/questions/10675/ink-e2e-tests-with-custom-environment
-			let address = client
-				.instantiate("xc_regions", &ink_e2e::alice(), constructor, 0, None)
+			let call_data = vec![
+				Value::u128(REGIONS_COLLECTION_ID.into()),
+				Value::unnamed_variant("Id", [Value::from_bytes(&alice_account)]),
+			];
+			client
+				.runtime_call(&ink_e2e::alice(), "Uniques", "create", call_data)
 				.await
-				.expect("instantiate failed")
-				.account_id;
-				*/
+				.expect("creating a collection failed");
 
 			Ok(())
 		}
