@@ -36,10 +36,13 @@ pub mod xc_regions {
 	};
 	use ink::{
 		codegen::{EmitEvent, Env},
-		prelude::{string::ToString, vec::Vec},
+		prelude::string::ToString,
 		storage::Mapping,
 	};
-	use openbrush::{contracts::psp34::extensions::metadata::*, traits::Storage};
+	use openbrush::{
+		contracts::psp34::*,
+		traits::{Storage, StorageAsMut},
+	};
 	use primitives::{
 		coretime::{RawRegionId, Region, RegionId},
 		ensure,
@@ -51,7 +54,13 @@ pub mod xc_regions {
 	#[ink(storage)]
 	#[derive(Default, Storage)]
 	pub struct XcRegions {
+		#[storage_field]
+		psp34: psp34::Data,
+		/// A mapping that links RawRegionId to its corresponding region metadata.
 		pub regions: Mapping<RawRegionId, Region>,
+		/// A mapping that keeps track of the metadata version for each region.
+		///
+		/// This version gets incremented for a region each time it gets re-initialized.
 		pub metadata_versions: Mapping<RawRegionId, Version>,
 		// Mock state only used for testing. In production the contract is reading the state from
 		// the chain extension.
@@ -180,8 +189,9 @@ pub mod xc_regions {
 	}
 
 	impl RegionMetadata for XcRegions {
-		/// A function for initializing the metadata of a region. It can only be called if the
-		/// specified region exists on this chain and the caller is the actual owner of the region.
+		/// A function for minting a wrapped xcRegion initializing the metadata of it. It can only
+		/// be called if the specified region exists on this chain and the caller is the actual
+		/// owner of the region.
 		///
 		/// ## Arguments:
 		/// - `raw_region_id` - The `u128` encoded region identifier.
@@ -202,8 +212,9 @@ pub mod xc_regions {
 			raw_region_id: RawRegionId,
 			region: Region,
 		) -> Result<(), XcRegionsError> {
+			let caller = self.env().caller();
 			ensure!(
-				Some(self.env().caller()) == self.owner_of(Id::U128(raw_region_id)),
+				Some(caller) == self.owner_of(Id::U128(raw_region_id)),
 				XcRegionsError::CannotInitialize
 			);
 
@@ -225,6 +236,7 @@ pub mod xc_regions {
 
 			self.metadata_versions.insert(raw_region_id, &new_version);
 			self.regions.insert(raw_region_id, &region);
+			self._insert_token_owner(&Id::U128(raw_region_id), &caller);
 
 			self.env().emit_event(RegionInitialized {
 				region_id: raw_region_id,
@@ -277,6 +289,7 @@ pub mod xc_regions {
 			// pallet.
 			ensure!(!self.exists(region_id), XcRegionsError::CannotRemove);
 			self.regions.remove(region_id);
+			self._remove_token_owner(&Id::U128(region_id));
 
 			self.env().emit_event(RegionRemoved { region_id });
 			Ok(())
@@ -290,6 +303,7 @@ pub mod xc_regions {
 		}
 	}
 
+	// Internal functions:
 	impl XcRegions {
 		/// Returns whether the region exists on this chain or not.
 		fn exists(&self, region_id: RawRegionId) -> bool {
@@ -333,6 +347,14 @@ pub mod xc_regions {
 			{
 				self.account.get(who).map(|a| a).unwrap_or_default()
 			}
+		}
+
+		fn _insert_token_owner(&mut self, id: &Id, to: &AccountId) {
+			self.data().token_owner.insert(id, to);
+		}
+
+		fn _remove_token_owner(&mut self, id: &Id) {
+			self.data().token_owner.remove(id);
 		}
 	}
 
