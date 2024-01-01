@@ -158,8 +158,7 @@ pub mod xc_regions {
 			self.metadata_versions.insert(raw_region_id, &new_version);
 			self.regions.insert(raw_region_id, &region);
 
-			psp34::InternalImpl::_mint_to(self, caller, Id::U128(raw_region_id))
-				.map_err(|err| XcRegionsError::Psp34(err))?;
+			psp34::InternalImpl::_mint_to(self, caller, Id::U128(raw_region_id)).map_err(XcRegionsError::Psp34)?;
 
 			self.env().emit_event(RegionInitialized {
 				region_id: raw_region_id,
@@ -212,8 +211,7 @@ pub mod xc_regions {
 
 			self.regions.remove(region_id);
 
-			psp34::InternalImpl::_burn_from(self, owner, id)
-				.map_err(|err| XcRegionsError::Psp34(err))?;
+			psp34::InternalImpl::_burn_from(self, owner, id).map_err(XcRegionsError::Psp34)?;
 			self._transfer(region_id, owner)?;
 
 			self.env().emit_event(RegionRemoved { region_id });
