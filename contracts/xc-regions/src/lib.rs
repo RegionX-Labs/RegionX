@@ -99,8 +99,8 @@ pub mod xc_regions {
 	}
 
 	impl RegionMetadata for XcRegions {
-		/// A function for minting a wrapped xcRegion initializing the metadata of it. It can only
-		/// be called if the specified region exists on this chain and the caller is the actual
+		/// A function for minting a wrapped xcRegion and initializing the metadata of it. It can
+		/// only be called if the specified region exists on this chain and the caller is the actual
 		/// owner of the region.
 		///
 		/// ## Arguments:
@@ -113,6 +113,12 @@ pub mod xc_regions {
 		///
 		/// If this is not the first time that this region is inititalized, the metadata version
 		/// will get incremented.
+		///
+		/// The underlying region will be transferred to this contract, and in response, a wrapped
+		/// token will be minted for the caller.
+		///
+		/// NOTE: Prior to invoking this ink message, the caller must grant approval to the contract
+		/// for the region, enabling its transfer.
 		///
 		/// ## Events:
 		/// On success this ink message emits the `RegionInitialized` event.
@@ -164,8 +170,7 @@ pub mod xc_regions {
 			Ok(())
 		}
 
-		/// A function to retrieve all metadata associated with a specific region. This function
-		/// verifies the region's existence on this chain prior to fetching its metadata.
+		/// A function to retrieve all metadata associated with a specific region.
 		///
 		/// The function returns a `VersionedRegion`, encompassing the version of the retrieved
 		/// metadata that is intended for client-side verification.
@@ -174,13 +179,10 @@ pub mod xc_regions {
 		/// - `raw_region_id` - The `u128` encoded region identifier.
 		#[ink(message)]
 		fn get_metadata(&self, region_id: RawRegionId) -> Result<VersionedRegion, XcRegionsError> {
-			// We must first ensure that the region is still present on this chain before retrieving
-			// the metadata.
-			ensure!(self._uniques_exists(region_id), XcRegionsError::RegionNotFound);
-
 			let Some(region) = self.regions.get(region_id) else {
 				return Err(XcRegionsError::MetadataNotFound)
 			};
+
 			let Some(version) = self.metadata_versions.get(region_id) else {
 				// This should never really happen; if a region has its metadata stored, its version
 				// should be stored as well.
@@ -190,10 +192,12 @@ pub mod xc_regions {
 			Ok(VersionedRegion { version, region })
 		}
 
-		/// A function for removing the metadata associated with a region.
+		/// A function to return the region to its owner.
 		///
-		/// This function is callable by anyone, and the metadata is removed successfully if the
-		/// specific region no longer exists on this chain.
+		/// This process involves burning the wrapped region and eliminating its associated
+		/// metadata.
+		///
+		///Only the owner of the wrapped region can call this function.
 		///
 		/// ## Arguments:
 		/// - `raw_region_id` - The `u128` encoded region identifier.

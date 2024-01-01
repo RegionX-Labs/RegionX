@@ -127,7 +127,7 @@ fn get_metadata_works() {
 	let mut xc_regions = XcRegions::new();
 
 	// Cannot get the metadata of a region that doesn't exist:
-	assert_eq!(xc_regions.get_metadata(0), Err(XcRegionsError::RegionNotFound));
+	assert_eq!(xc_regions.get_metadata(0), Err(XcRegionsError::MetadataNotFound));
 
 	// Minting a region without initializing it.
 	assert_ok!(xc_regions.mint(region_id(0), alice));
