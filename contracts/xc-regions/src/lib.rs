@@ -19,6 +19,9 @@
 mod traits;
 mod types;
 
+#[cfg(test)]
+mod tests;
+
 // NOTE: This should be the collection ID of the underlying region collection.
 const REGIONS_COLLECTION_ID: u32 = 42;
 
@@ -43,6 +46,9 @@ pub mod xc_regions {
 	};
 	use uniques_extension::UniquesExtension;
 
+	#[cfg(test)]
+	use primitives::uniques::CollectionId;
+
 	#[ink(storage)]
 	#[derive(Default, Storage)]
 	pub struct XcRegions {
@@ -54,6 +60,18 @@ pub mod xc_regions {
 		///
 		/// This version gets incremented for a region each time it gets re-initialized.
 		pub metadata_versions: Mapping<RawRegionId, Version>,
+		// Mock chain extension state only used for integration testing.
+		#[cfg(test)]
+		pub items: Mapping<
+			(primitives::uniques::CollectionId, primitives::coretime::RawRegionId),
+			ItemDetails,
+		>,
+		// Mock chain extension state only used for integration testing.
+		#[cfg(test)]
+		pub account: Mapping<
+			AccountId,
+			Vec<(primitives::uniques::CollectionId, primitives::coretime::RawRegionId)>,
+		>,
 	}
 
 	#[ink(event)]
@@ -205,6 +223,7 @@ pub mod xc_regions {
 	}
 
 	// Internal functions:
+	#[cfg(not(test))]
 	impl XcRegions {
 		fn _transfer_approved(
 			&self,
@@ -235,6 +254,75 @@ pub mod xc_regions {
 		/// The owner of the specific item.
 		fn _uniques_owner(&self, region_id: RawRegionId) -> Option<AccountId> {
 			self.env().extension().owner(REGIONS_COLLECTION_ID, region_id).ok()?
+		}
+	}
+
+	// Implelementation of internal functions used only for integration tests.
+	#[cfg(test)]
+	impl XcRegions {
+		fn _transfer_approved(
+			&self,
+			_region_id: RawRegionId,
+			_dest: AccountId,
+		) -> Result<(), XcRegionsError> {
+			Ok(())
+		}
+
+		/// Returns whether the region exists on this chain or not.
+		fn _uniques_exists(&self, region_id: RawRegionId) -> bool {
+			self._uniques_item(region_id).is_some()
+		}
+
+		/// Returns the details of an item within a collection.
+		fn _uniques_item(&self, item_id: RawRegionId) -> Option<ItemDetails> {
+			self.items.get((REGIONS_COLLECTION_ID, item_id))
+		}
+
+		/// The owner of the specific item.
+		fn _uniques_owner(&self, region_id: RawRegionId) -> Option<AccountId> {
+			self.items.get((REGIONS_COLLECTION_ID, region_id)).map(|a| a.owner)
+		}
+
+		pub fn mint(
+			&mut self,
+			id: (CollectionId, RawRegionId),
+			owner: AccountId,
+		) -> Result<(), &'static str> {
+			ensure!(self.items.get((id.0, id.1)).is_none(), "Item already exists");
+			self.items.insert(
+				(id.0, id.1),
+				&ItemDetails {
+					owner,
+					approved: None,
+					is_frozen: false,
+					deposit: Default::default(),
+				},
+			);
+
+			let mut owned = self.account.get(owner).map(|a| a).unwrap_or_default();
+			owned.push((id.0, id.1));
+			self.account.insert(owner, &owned);
+
+			Ok(())
+		}
+
+		pub fn burn(&mut self, id: (CollectionId, RawRegionId)) -> Result<(), &'static str> {
+			let Some(owner) = self.items.get((id.0, id.1)).map(|a| a.owner) else {
+				return Err("Item not found")
+			};
+
+			let mut owned = self.account.get(owner).map(|a| a).unwrap_or_default();
+			owned.retain(|a| *a != (id.0, id.1));
+
+			if owned.is_empty() {
+				self.account.remove(owner);
+			} else {
+				self.account.insert(owner, &owned);
+			}
+
+			self.items.remove((id.0, id.1));
+
+			Ok(())
 		}
 	}
 

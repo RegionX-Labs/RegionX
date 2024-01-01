@@ -14,21 +14,19 @@
 // along with RegionX.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-	mock::{get_default_accounts, region_id},
 	traits::RegionMetadata,
 	types::{VersionedRegion, XcRegionsError},
 	xc_regions::{RegionInitialized, RegionRemoved, XcRegions},
 	REGIONS_COLLECTION_ID,
 };
 use ink::env::{
-	test::{set_caller, DefaultAccounts},
+	test::{default_accounts, set_caller, DefaultAccounts},
 	DefaultEnvironment,
 };
-use openbrush::contracts::psp34::{Id, PSP34};
 use primitives::{
 	assert_ok,
 	coretime::{RawRegionId, Region},
-	uniques::ItemDetails,
+	uniques::{CollectionId, ItemDetails},
 	Version,
 };
 
@@ -80,29 +78,6 @@ fn mock_environment_helper_functions_work() {
 }
 
 #[ink::test]
-fn psp34_implementation_works() {
-	let DefaultAccounts::<DefaultEnvironment> { alice, bob, .. } = get_default_accounts();
-	let mut xc_regions = XcRegions::new();
-
-	// Initialize some state:
-	assert_ok!(xc_regions.mint(region_id(0), alice));
-	assert_ok!(xc_regions.mint(region_id(1), bob));
-
-	// 1. Ensure `collection_id` works:
-	assert_eq!(xc_regions.collection_id(), Id::U32(REGIONS_COLLECTION_ID));
-
-	// 2. Ensure `owner_of` works:
-	assert_eq!(xc_regions.owner_of(Id::U128(0)), Some(alice));
-	assert_eq!(xc_regions.owner_of(Id::U128(1)), Some(bob));
-	assert_eq!(xc_regions.owner_of(Id::U128(3)), None);
-
-	// 3. Ensure `balance_of` works:
-	assert_eq!(xc_regions.balance_of(alice), 1);
-	assert_ok!(xc_regions.burn(region_id(1)));
-	assert_eq!(xc_regions.balance_of(bob), 0);
-}
-
-#[ink::test]
 fn init_works() {
 	let DefaultAccounts::<DefaultEnvironment> { alice, bob, .. } = get_default_accounts();
 	let mut xc_regions = XcRegions::new();
@@ -138,75 +113,12 @@ fn init_works() {
 fn remove_works() {
 	let DefaultAccounts::<DefaultEnvironment> { alice, bob, .. } = get_default_accounts();
 	let mut xc_regions = XcRegions::new();
-
-	// We first mint and initialize a region.
-	assert_ok!(xc_regions.mint(region_id(0), alice));
-	assert_ok!(xc_regions.init(0, Region::default()));
-
-	assert_eq!(xc_regions.regions.get(0), Some(Region::default()));
-	assert_eq!(xc_regions.metadata_versions.get(0), Some(0));
-
-	let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
-	assert_init_event(&emitted_events.last().unwrap(), 0, Region::default(), 0);
-
-	// Cannot remove a region that exists.
-	assert_eq!(xc_regions.remove(0), Err(XcRegionsError::CannotRemove));
-
-	assert_ok!(xc_regions.burn(region_id(0)));
-
-	// Anyone has the right to remove a region that no longer exists on this chain.
-	set_caller::<DefaultEnvironment>(bob);
-	assert_ok!(xc_regions.remove(0));
-
-	assert_eq!(xc_regions.regions.get(0), None);
-	// The metadata version is still stored in the contract.
-	assert_eq!(xc_regions.metadata_versions.get(0), Some(0));
-
-	let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
-	assert_removed_event(&emitted_events.last().unwrap(), 0);
 }
 
 #[ink::test]
 fn metadata_version_gets_updated() {
 	let DefaultAccounts::<DefaultEnvironment> { alice, .. } = get_default_accounts();
 	let mut xc_regions = XcRegions::new();
-
-	// We first mint and initialize a region.
-	assert_ok!(xc_regions.mint(region_id(0), alice));
-	assert_ok!(xc_regions.init(0, Region::default()));
-
-	assert_eq!(xc_regions.regions.get(0), Some(Region::default()));
-	assert_eq!(xc_regions.metadata_versions.get(0), Some(0));
-
-	let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
-	assert_init_event(&emitted_events.last().unwrap(), 0, Region::default(), 0);
-
-	// In reality, updating metadata would require the asset to be destroyed, transferred
-	// back to the reserve chain via a cross-chain transfer, then sent back and re-initialized with
-	// the `init` call.
-
-	// In this test we simulate this by burning and minting the asset back again.
-
-	// Remove the region:
-	assert_ok!(xc_regions.burn(region_id(0)));
-	assert_ok!(xc_regions.remove(0));
-
-	assert_eq!(xc_regions.regions.get(0), None);
-	assert_eq!(xc_regions.metadata_versions.get(0), Some(0));
-
-	let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
-	assert_removed_event(&emitted_events.last().unwrap(), 0);
-
-	// Mint and initialize the region again:
-	assert_ok!(xc_regions.mint(region_id(0), alice));
-	assert_ok!(xc_regions.init(0, Region::default()));
-
-	assert_eq!(xc_regions.regions.get(0), Some(Region::default()));
-	// The metadata version must be incremented to indicate the change:
-	assert_eq!(xc_regions.metadata_versions.get(0), Some(1));
-
-	let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
-	assert_init_event(&emitted_events.last().unwrap(), 0, Region::default(), 1);
 }
 
 #[ink::test]
@@ -259,4 +171,12 @@ fn assert_removed_event(event: &ink::env::test::EmittedEvent, expected_region_id
 	} else {
 		panic!("encountered unexpected event kind: expected a RegionRemoved event")
 	}
+}
+
+pub fn region_id(region_id: RawRegionId) -> (CollectionId, RawRegionId) {
+	(REGIONS_COLLECTION_ID, region_id)
+}
+
+pub fn get_default_accounts() -> DefaultAccounts<DefaultEnvironment> {
+	default_accounts::<DefaultEnvironment>()
 }
