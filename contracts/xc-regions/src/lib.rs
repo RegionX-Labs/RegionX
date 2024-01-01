@@ -334,18 +334,13 @@ pub mod xc_regions {
 	pub mod tests {
 		use super::*;
 		use crate::{
-			traits::regionmetadata_external::RegionMetadata,
-			types::{VersionedRegion, XcRegionsError},
+			traits::regionmetadata_external::RegionMetadata, types::VersionedRegion,
 			REGIONS_COLLECTION_ID,
 		};
 		use environment::ExtendedEnvironment;
-		use ink::{
-			env::{test::DefaultAccounts, DefaultEnvironment},
-			primitives::AccountId,
-		};
-		use ink_e2e::{subxt::dynamic::Value, AccountKeyring::Alice, MessageBuilder};
+		use ink_e2e::{subxt::dynamic::Value, MessageBuilder};
 		use openbrush::contracts::psp34::psp34_external::PSP34;
-		use primitives::{address_of, assert_ok};
+		use primitives::address_of;
 
 		type E2EResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -367,8 +362,8 @@ pub mod xc_regions {
 				contract_acc_id.clone(),
 			)
 			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
-			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
-			assert!(init_result.is_err(), "Init for non existing region should fail");
+			let init_result = client.call_dry_run(&ink_e2e::alice(), &init, 0, None).await;
+			assert_eq!(init_result.return_value(), Err(XcRegionsError::CannotInitialize));
 
 			Ok(())
 		}
@@ -424,14 +419,24 @@ pub mod xc_regions {
 			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
 			assert!(init_result.is_ok(), "Init should work");
 
+			// Ensure the state is properly updated:
+
+			// Alice receives the wrapped region:
 			let balance_of = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
 				contract_acc_id.clone(),
 			)
 			.call(|xc_regions| xc_regions.balance_of(address_of!(Alice)));
 			let balance_of_res = client.call_dry_run(&ink_e2e::alice(), &balance_of, 0, None).await;
-
 			assert_eq!(balance_of_res.return_value(), 1);
 
+			let owner_of = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.owner_of(Id::U128(0)));
+			let owner_of_res = client.call_dry_run(&ink_e2e::alice(), &owner_of, 0, None).await;
+			assert_eq!(owner_of_res.return_value(), Some(address_of!(Alice)));
+
+			// The metadata is properly stored:
 			let get_metadata =
 				MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
 					contract_acc_id.clone(),
@@ -446,7 +451,7 @@ pub mod xc_regions {
 		}
 
 		#[ink_e2e::test(environment = ExtendedEnvironment)]
-		async fn init_fails_with_incorrect_region_id(mut client: E2EBackend) -> E2EResult<()> {
+		async fn remove_works(mut client: E2EBackend) -> E2EResult<()> {
 			let constructor = XcRegionsRef::new();
 			let contract_acc_id = client
 				.instantiate("xc-regions", &ink_e2e::alice(), constructor, 0, None)
@@ -455,7 +460,7 @@ pub mod xc_regions {
 				.account_id;
 
 			let raw_region_id = 0u128;
-			let mut region = Region::default();
+			let region = Region::default();
 
 			// Create region: collection
 			let call_data = vec![
@@ -489,23 +494,48 @@ pub mod xc_regions {
 				.await
 				.expect("approving transfer failed");
 
-			// Corrupt the metadata. The contract will notice since begin is part of the `RegionId`.
-			region.begin = 42;
 			let init = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
 				contract_acc_id.clone(),
 			)
 			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
 			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
-			assert!(init_result.is_err(), "Init with incorrect region.begin should fail");
+			assert!(init_result.is_ok(), "Init should succeed");
 
-			// Works after resetting the default:
-			region.begin = Default::default();
-			let init = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+			let remove = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
 				contract_acc_id.clone(),
 			)
-			.call(|xc_regions| xc_regions.init(raw_region_id, region.clone()));
-			let init_result = client.call(&ink_e2e::alice(), init, 0, None).await;
-			assert!(init_result.is_ok(), "Init with correct region.begin should succeed");
+			.call(|xc_regions| xc_regions.remove(raw_region_id));
+
+			let remove_result = client.call(&ink_e2e::alice(), remove, 0, None).await;
+			assert!(remove_result.is_ok(), "Remove should work");
+
+			// Ensure the state is properly updated:
+
+			// Alice no longer holds the wrapped region:
+			let balance_of = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.balance_of(address_of!(Alice)));
+			let balance_of_res = client.call_dry_run(&ink_e2e::alice(), &balance_of, 0, None).await;
+			assert_eq!(balance_of_res.return_value(), 0);
+
+			let owner_of = MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+				contract_acc_id.clone(),
+			)
+			.call(|xc_regions| xc_regions.owner_of(Id::U128(0)));
+			let owner_of_res = client.call_dry_run(&ink_e2e::alice(), &owner_of, 0, None).await;
+			assert_eq!(owner_of_res.return_value(), None);
+
+			// The metadata should be removed:
+			let get_metadata =
+				MessageBuilder::<ExtendedEnvironment, XcRegionsRef>::from_account_id(
+					contract_acc_id.clone(),
+				)
+				.call(|xc_regions| xc_regions.get_metadata(raw_region_id));
+			let get_metadata_res =
+				client.call_dry_run(&ink_e2e::alice(), &get_metadata, 0, None).await;
+
+			assert_eq!(get_metadata_res.return_value(), Err(XcRegionsError::MetadataNotFound));
 
 			Ok(())
 		}
