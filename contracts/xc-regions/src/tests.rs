@@ -120,7 +120,7 @@ fn init_works() {
 
 #[ink::test]
 fn remove_works() {
-	let DefaultAccounts::<DefaultEnvironment> { charlie, bob, .. } = get_default_accounts();
+	let DefaultAccounts::<DefaultEnvironment> { charlie, .. } = get_default_accounts();
 	let mut xc_regions = XcRegions::new();
 	set_caller::<DefaultEnvironment>(charlie);
 
@@ -155,13 +155,9 @@ fn remove_works() {
 	// contract for this region.
 	assert_eq!(xc_regions.regions.get(0), None);
 	assert_eq!(xc_regions.metadata_versions.get(0), Some(0));
-}
 
-#[ink::test]
-fn metadata_version_gets_updated() {
-	let DefaultAccounts::<DefaultEnvironment> { charlie, .. } = get_default_accounts();
-	let mut xc_regions = XcRegions::new();
-	set_caller::<DefaultEnvironment>(charlie);
+	let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
+	assert_removed_event(&emitted_events.last().unwrap(), 0);
 }
 
 #[ink::test]
@@ -181,6 +177,28 @@ fn get_metadata_works() {
 	assert_eq!(
 		xc_regions.get_metadata(0),
 		Ok(VersionedRegion { version: 0, region: Region::default() })
+	);
+}
+
+#[ink::test]
+fn metadata_version_gets_updated() {
+	let DefaultAccounts::<DefaultEnvironment> { charlie, .. } = get_default_accounts();
+	let mut xc_regions = XcRegions::new();
+	set_caller::<DefaultEnvironment>(charlie);
+
+	assert_ok!(xc_regions.mint(region_id(0), charlie));
+	assert_ok!(xc_regions.init(0, Region::default()));
+	assert_eq!(
+		xc_regions.get_metadata(0),
+		Ok(VersionedRegion { version: 0, region: Region::default() })
+	);
+
+	assert_ok!(xc_regions.remove(0));
+
+	assert_ok!(xc_regions.init(0, Region::default()));
+	assert_eq!(
+		xc_regions.get_metadata(0),
+		Ok(VersionedRegion { version: 1, region: Region::default() })
 	);
 }
 
