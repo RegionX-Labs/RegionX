@@ -147,7 +147,7 @@ pub mod xc_regions {
 			// After passing all checks we will transfer the region to the contract and mint a
 			// wrapped xcRegion token.
 			let contract = self.env().account_id();
-			self._transfer_approved(raw_region_id, contract)?;
+			self._transfer(raw_region_id, contract)?;
 
 			let new_version = if let Some(version) = self.metadata_versions.get(raw_region_id) {
 				version.saturating_add(1)
@@ -207,12 +207,14 @@ pub mod xc_regions {
 		#[ink(message)]
 		fn remove(&mut self, region_id: RawRegionId) -> Result<(), XcRegionsError> {
 			let id = Id::U128(region_id);
-			let owner = psp34::PSP34Impl::owner_of(self, id.clone())
-				.ok_or(XcRegionsError::RegionNotFound)?;
+			let owner =
+				psp34::PSP34Impl::owner_of(self, id.clone()).ok_or(XcRegionsError::CannotRemove)?;
 
 			self.regions.remove(region_id);
-			psp34::InternalImpl::_transfer_token(self, owner, id, Default::default())
+
+			psp34::InternalImpl::_burn_from(self, owner, id)
 				.map_err(|err| XcRegionsError::Psp34(err))?;
+			self._transfer(region_id, owner)?;
 
 			self.env().emit_event(RegionRemoved { region_id });
 			Ok(())
@@ -229,11 +231,7 @@ pub mod xc_regions {
 	// Internal functions:
 	#[cfg(not(test))]
 	impl XcRegions {
-		fn _transfer_approved(
-			&self,
-			region_id: RawRegionId,
-			dest: AccountId,
-		) -> Result<(), XcRegionsError> {
+		fn _transfer(&self, region_id: RawRegionId, dest: AccountId) -> Result<(), XcRegionsError> {
 			self.env()
 				.call_runtime(&RuntimeCall::Uniques(UniquesCall::Transfer {
 					collection: REGIONS_COLLECTION_ID,
@@ -264,26 +262,28 @@ pub mod xc_regions {
 	// Implelementation of internal functions used only for integration tests.
 	#[cfg(test)]
 	impl XcRegions {
-		fn _transfer_approved(
-			&self,
-			_region_id: RawRegionId,
-			_dest: AccountId,
+		fn _transfer(
+			&mut self,
+			region_id: RawRegionId,
+			dest: AccountId,
 		) -> Result<(), XcRegionsError> {
+			self.burn((REGIONS_COLLECTION_ID, region_id)).unwrap();
+			self.mint((REGIONS_COLLECTION_ID, region_id), dest).unwrap();
 			Ok(())
 		}
 
 		/// Returns whether the region exists on this chain or not.
-		fn _uniques_exists(&self, region_id: RawRegionId) -> bool {
+		pub fn _uniques_exists(&self, region_id: RawRegionId) -> bool {
 			self._uniques_item(region_id).is_some()
 		}
 
 		/// Returns the details of an item within a collection.
-		fn _uniques_item(&self, item_id: RawRegionId) -> Option<ItemDetails> {
+		pub fn _uniques_item(&self, item_id: RawRegionId) -> Option<ItemDetails> {
 			self.items.get((REGIONS_COLLECTION_ID, item_id))
 		}
 
 		/// The owner of the specific item.
-		fn _uniques_owner(&self, region_id: RawRegionId) -> Option<AccountId> {
+		pub fn _uniques_owner(&self, region_id: RawRegionId) -> Option<AccountId> {
 			self.items.get((REGIONS_COLLECTION_ID, region_id)).map(|a| a.owner)
 		}
 
