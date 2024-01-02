@@ -57,6 +57,7 @@ cargo contract build --release
 ```
 
 4. Running e2e-tests
+   
 	Considering that the xc-regions contract necessitates the underlying chain to implement the uniques pallet for running e2e tests, it is required to specify a custom contracts node. For this purpose, we utilize the Astar local node from [Coretime-Mock](https://github.com/RegionX-Labs/Coretime-Mock) directory:
 	```sh
 	export CONTRACTS_NODE="~/Coretime-Mock/bin/astar-collator"
@@ -65,6 +66,7 @@ cargo contract build --release
 	```sh
 	cargo test --features e2e-tests
 	```
+
 ## 4. Deploy
 
 For the xc-regions contract to function correctly, the chain on which it is deployed must implement the uniques pallet. Given that the pallet index of the uniques pallet can vary across different chains, it's crucial to correctly configure this index before building and deploying the contract. To achieve this, the following steps should be taken:
